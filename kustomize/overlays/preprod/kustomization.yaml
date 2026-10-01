@@ -1,0 +1,78 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Overlay PREPROD (dev / staging / qa)
+#  - consolidationPolicy: WhenEmpty (conservador)
+#  - budgets mas permisivos (30%)
+#  - nombres con prefijo "preprod-"
+#  - NodeClass referenciada: "preprod"
+
+namePrefix: preprod-
+
+commonLabels:
+  environment: preprod
+
+resources:
+  - ../../base
+
+# Ajusta la NodeClass base al entorno preprod
+patches:
+  # Renombra la NodeClass base -> preprod y ajusta discovery/role/tags/storage
+  - target:
+      kind: NodeClass
+      name: base
+    patch: |-
+      - op: replace
+        path: /metadata/name
+        value: preprod
+      - op: replace
+        path: /spec/subnetSelectorTerms/0/tags/karpenter.sh~1discovery
+        value: "mi-cluster-preprod"
+      - op: replace
+        path: /spec/securityGroupSelectorTerms/0/tags/karpenter.sh~1discovery
+        value: "mi-cluster-preprod"
+      - op: replace
+        path: /spec/role
+        value: "mi-cluster-eks-node-role"
+      - op: add
+        path: /spec/tags/environment
+        value: preprod
+      - op: add
+        path: /spec/tags/cost-center
+        value: engineering-nonprod
+
+  # NodePool Spot preprod: apunta a NodeClass preprod, budgets 30%, expire 7d
+  - target:
+      kind: NodePool
+      name: base-spot
+    patch: |-
+      - op: replace
+        path: /spec/template/spec/nodeClassRef/name
+        value: preprod
+      - op: replace
+        path: /spec/template/spec/expireAfter
+        value: 168h
+      - op: replace
+        path: /spec/disruption/budgets/0/nodes
+        value: "30%"
+
+  # NodePool On-Demand preprod
+  - target:
+      kind: NodePool
+      name: base-on-demand
+    patch: |-
+      - op: replace
+        path: /spec/template/spec/nodeClassRef/name
+        value: preprod
+      - op: replace
+        path: /spec/template/spec/expireAfter
+        value: 168h
+      - op: replace
+        path: /spec/disruption/budgets/0/nodes
+        value: "30%"
+      - op: replace
+        path: /spec/limits/cpu
+        value: "200"
+      - op: replace
+        path: /spec/limits/memory
+        value: 200Gi

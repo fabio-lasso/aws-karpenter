@@ -1,0 +1,105 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Overlay PROD (produccion)
+#  - consolidationPolicy: WhenEmptyOrUnderutilized (optimiza costo)
+#  - budgets estrictos (10% + 1 para Underutilized + ventana de pico)
+#  - limites mayores
+#  - nombres con prefijo "prod-"
+#  - NodeClass referenciada: "prod"
+
+namePrefix: prod-
+
+commonLabels:
+  environment: prod
+
+resources:
+  - ../../base
+
+patches:
+  # NodeClass base -> prod
+  - target:
+      kind: NodeClass
+      name: base
+    patch: |-
+      - op: replace
+        path: /metadata/name
+        value: prod
+      - op: replace
+        path: /spec/subnetSelectorTerms/0/tags/karpenter.sh~1discovery
+        value: "mi-cluster-prod"
+      - op: replace
+        path: /spec/securityGroupSelectorTerms/0/tags/karpenter.sh~1discovery
+        value: "mi-cluster-prod"
+      - op: replace
+        path: /spec/role
+        value: "mi-cluster-eks-node-role"
+      - op: replace
+        path: /spec/ephemeralStorage/size
+        value: "80Gi"
+      - op: add
+        path: /spec/tags/environment
+        value: prod
+      - op: add
+        path: /spec/tags/cost-center
+        value: engineering-prod
+
+  # NodePool Spot prod: WhenEmptyOrUnderutilized + budgets estrictos + limites mayores
+  - target:
+      kind: NodePool
+      name: base-spot
+    patch: |-
+      - op: replace
+        path: /spec/template/spec/nodeClassRef/name
+        value: prod
+      - op: replace
+        path: /spec/disruption/consolidationPolicy
+        value: WhenEmptyOrUnderutilized
+      - op: replace
+        path: /spec/disruption/consolidateAfter
+        value: 2m
+      - op: replace
+        path: /spec/disruption/budgets
+        value:
+          - nodes: "10%"
+          - nodes: "1"
+            reasons: ["Underutilized"]
+          - nodes: "0"
+            schedule: "0 8 * * mon-fri"
+            duration: 12h
+      - op: replace
+        path: /spec/limits/cpu
+        value: "2000"
+      - op: replace
+        path: /spec/limits/memory
+        value: 2000Gi
+
+  # NodePool On-Demand prod
+  - target:
+      kind: NodePool
+      name: base-on-demand
+    patch: |-
+      - op: replace
+        path: /spec/template/spec/nodeClassRef/name
+        value: prod
+      - op: replace
+        path: /spec/disruption/consolidationPolicy
+        value: WhenEmptyOrUnderutilized
+      - op: replace
+        path: /spec/disruption/consolidateAfter
+        value: 2m
+      - op: replace
+        path: /spec/disruption/budgets
+        value:
+          - nodes: "10%"
+          - nodes: "1"
+            reasons: ["Underutilized"]
+      - op: replace
+        path: /spec/template/spec/requirements/3/values
+        value: [xlarge, 2xlarge, 4xlarge]
+      - op: replace
+        path: /spec/limits/cpu
+        value: "1000"
+      - op: replace
+        path: /spec/limits/memory
+        value: 1000Gi

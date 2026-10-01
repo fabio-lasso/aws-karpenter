@@ -1,0 +1,62 @@
+# Valores PROD (produccion)
+#  - consolidationPolicy: WhenEmptyOrUnderutilized (optimiza costo)
+#  - budgets estrictos (10% + 1 Underutilized + ventana de pico)
+environment: prod
+
+nodeClass:
+  name: default
+  discoveryTag: "mi-cluster-prod"
+  role: "mi-cluster-eks-node-role"
+  ephemeralStorage:
+    size: "80Gi"
+    iops: 3000
+    throughput: 125
+  tags:
+    managed-by: karpenter
+    cost-center: engineering-prod
+
+nodePools:
+  - name: spot
+    weight: 100
+    capacityType: ["spot"]
+    arch: ["amd64", "arm64"]
+    instanceCategory: ["c", "m", "r", "t"]
+    instanceSizeNotIn: ["nano", "micro", "small", "medium"]
+    instanceGeneration: "2"
+    allZones: true
+    expireAfter: "336h"
+    limits:
+      cpu: "2000"
+      memory: "2000Gi"
+    consolidationPolicy: WhenEmptyOrUnderutilized
+    consolidateAfter: "2m"
+    budgets:
+      - nodes: "10%"
+      - nodes: "1"
+        reasons: ["Underutilized"]
+      - nodes: "0"
+        schedule: "0 8 * * mon-fri"
+        duration: 12h
+    extraLabels:
+      capacity: spot
+
+  - name: on-demand
+    weight: 10
+    capacityType: ["on-demand"]
+    arch: ["amd64"]
+    instanceCategory: ["c", "m"]
+    instanceSizeIn: ["xlarge", "2xlarge", "4xlarge"]
+    instanceGeneration: "2"
+    allZones: true
+    expireAfter: "336h"
+    limits:
+      cpu: "1000"
+      memory: "1000Gi"
+    consolidationPolicy: WhenEmptyOrUnderutilized
+    consolidateAfter: "2m"
+    budgets:
+      - nodes: "10%"
+      - nodes: "1"
+        reasons: ["Underutilized"]
+    extraLabels:
+      capacity: on-demand

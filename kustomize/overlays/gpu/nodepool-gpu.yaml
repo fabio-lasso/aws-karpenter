@@ -1,0 +1,70 @@
+# NodePool + NodeClass GPU dedicado (con taint). Overlay independiente:
+# no deriva del base Spot/On-Demand porque GPU tiene requisitos propios.
+apiVersion: karpenter.sh/v1
+kind: NodePool
+metadata:
+  name: gpu
+  labels:
+    workload-type: gpu
+spec:
+  weight: 50
+  template:
+    metadata:
+      labels:
+        intent: gpu
+    spec:
+      nodeClassRef:
+        group: eks.amazonaws.com
+        kind: NodeClass
+        name: gpu
+      expireAfter: 336h
+      terminationGracePeriod: 24h
+      taints:
+        - key: nvidia.com/gpu
+          effect: NoSchedule
+      requirements:
+        - key: karpenter.sh/capacity-type
+          operator: In
+          values: ["on-demand"]
+        - key: kubernetes.io/arch
+          operator: In
+          values: ["amd64"]
+        - key: eks.amazonaws.com/instance-category
+          operator: In
+          values: ["g", "p"]
+        - key: eks.amazonaws.com/instance-gpu-manufacturer
+          operator: In
+          values: ["nvidia"]
+        - key: eks.amazonaws.com/instance-generation
+          operator: Gt
+          values: ["3"]
+  limits:
+    cpu: "500"
+    memory: 500Gi
+    nvidia.com/gpu: "8"
+  disruption:
+    consolidationPolicy: WhenEmpty
+    consolidateAfter: 5m
+    budgets:
+      - nodes: "10%"
+---
+apiVersion: eks.amazonaws.com/v1
+kind: NodeClass
+metadata:
+  name: gpu
+spec:
+  subnetSelectorTerms:
+    - tags:
+        karpenter.sh/discovery: "mi-cluster-prod"
+  securityGroupSelectorTerms:
+    - tags:
+        karpenter.sh/discovery: "mi-cluster-prod"
+  role: "mi-cluster-eks-node-role"
+  ephemeralStorage:
+    size: "200Gi"
+    iops: 3000
+    throughput: 125
+  tags:
+    managed-by: karpenter
+    workload-type: gpu
+    cost-center: ml-gpu

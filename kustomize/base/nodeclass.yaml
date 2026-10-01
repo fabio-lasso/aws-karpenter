@@ -1,0 +1,20 @@
+# NodeClass base: infraestructura. Los overlays sobrescriben nombre, tags,
+# ephemeralStorage y los valores de discovery/role mediante patches o replacements.
+apiVersion: eks.amazonaws.com/v1
+kind: NodeClass
+metadata:
+  name: base
+spec:
+  subnetSelectorTerms:
+    - tags:
+        karpenter.sh/discovery: DISCOVERY_TAG      # sustituido por overlay
+  securityGroupSelectorTerms:
+    - tags:
+        karpenter.sh/discovery: DISCOVERY_TAG      # sustituido por overlay
+  role: NODE_IAM_ROLE                              # sustituido por overlay
+  ephemeralStorage:
+    size: "40Gi"
+    iops: 3000
+    throughput: 125
+  tags:
+    managed-by: karpenter

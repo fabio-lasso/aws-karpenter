@@ -1,0 +1,25 @@
+apiVersion: eks.amazonaws.com/v1
+kind: NodeClass
+metadata:
+  name: {{ include "knp.nodeClassName" . }}
+  labels:
+    {{- include "knp.commonLabels" . | nindent 4 }}
+spec:
+  subnetSelectorTerms:
+    - tags:
+        karpenter.sh/discovery: {{ .Values.nodeClass.discoveryTag | quote }}
+  securityGroupSelectorTerms:
+    - tags:
+        karpenter.sh/discovery: {{ .Values.nodeClass.discoveryTag | quote }}
+  role: {{ .Values.nodeClass.role | quote }}
+  {{- with .Values.nodeClass.ephemeralStorage }}
+  ephemeralStorage:
+    size: {{ .size | quote }}
+    iops: {{ .iops }}
+    throughput: {{ .throughput }}
+  {{- end }}
+  tags:
+    environment: {{ .Values.environment }}
+    {{- with .Values.nodeClass.tags }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}

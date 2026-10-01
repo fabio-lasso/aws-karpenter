@@ -1,0 +1,55 @@
+# Valores PREPROD (dev / staging / qa)
+#  - consolidationPolicy: WhenEmpty (conservador)
+#  - budgets 30%
+environment: preprod
+
+nodeClass:
+  name: default
+  discoveryTag: "mi-cluster-preprod"
+  role: "mi-cluster-eks-node-role"
+  ephemeralStorage:
+    size: "40Gi"
+    iops: 3000
+    throughput: 125
+  tags:
+    managed-by: karpenter
+    cost-center: engineering-nonprod
+
+nodePools:
+  - name: spot
+    weight: 100
+    capacityType: ["spot"]
+    arch: ["amd64", "arm64"]
+    instanceCategory: ["c", "m", "r", "t"]
+    instanceSizeNotIn: ["nano", "micro", "small", "medium"]
+    instanceGeneration: "2"
+    allZones: true
+    expireAfter: "168h"
+    limits:
+      cpu: "500"
+      memory: "500Gi"
+    consolidationPolicy: WhenEmpty
+    consolidateAfter: "1m"
+    budgets:
+      - nodes: "30%"
+    extraLabels:
+      capacity: spot
+
+  - name: on-demand
+    weight: 10
+    capacityType: ["on-demand"]
+    arch: ["amd64"]
+    instanceCategory: ["c", "m"]
+    instanceSizeIn: ["xlarge", "2xlarge"]
+    instanceGeneration: "2"
+    allZones: false
+    expireAfter: "168h"
+    limits:
+      cpu: "200"
+      memory: "200Gi"
+    consolidationPolicy: WhenEmpty
+    consolidateAfter: "1m"
+    budgets:
+      - nodes: "30%"
+    extraLabels:
+      capacity: on-demand

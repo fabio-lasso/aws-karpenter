@@ -56,6 +56,7 @@ Material complementario:
 
 - **Guía de referencia de configuración** (campo por campo): [`docs/guia-referencia/`](docs/guia-referencia/README.md)
 - **Plantillas de despliegue** (Spot amplio / On-Demand justo, por entorno, GPU): [`templates/`](templates/README.md)
+- **Infraestructura como código** (Kustomize + Helm, por entorno): [`iac/`](iac/README.md)
 - **Manifiestos reutilizables** del workshop: [`manifests/`](manifests/)
 
 ---

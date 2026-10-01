@@ -1,0 +1,13 @@
+apiVersion: v2
+name: karpenter-nodepools
+description: NodePools y NodeClasses de Karpenter para EKS Auto Mode (Spot amplio / On-Demand justo), parametrizables por entorno.
+type: application
+version: 0.1.0
+appVersion: "1.0"
+keywords:
+  - karpenter
+  - eks
+  - autoscaling
+  - spot
+maintainers:
+  - name: Fabio Andres Lasso

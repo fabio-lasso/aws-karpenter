@@ -1,0 +1,83 @@
+{{- $root := . -}}
+{{- $nodeClassName := include "knp.nodeClassName" . -}}
+{{- range $pool := .Values.nodePools }}
+---
+apiVersion: karpenter.sh/v1
+kind: NodePool
+metadata:
+  name: {{ include "knp.nodePoolName" (dict "env" $root.Values.environment "pool" $pool.name) }}
+  labels:
+    {{- include "knp.commonLabels" $root | nindent 4 }}
+    {{- with $pool.extraLabels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  {{- with $pool.weight }}
+  weight: {{ . }}
+  {{- end }}
+  template:
+    metadata:
+      labels:
+        intent: {{ $pool.intent | default "apps" }}
+        environment: {{ $root.Values.environment }}
+    spec:
+      nodeClassRef:
+        group: eks.amazonaws.com
+        kind: NodeClass
+        name: {{ $nodeClassName }}
+      expireAfter: {{ $pool.expireAfter | default "336h" }}
+      terminationGracePeriod: {{ $pool.terminationGracePeriod | default "24h" }}
+      {{- with $pool.taints }}
+      taints:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      requirements:
+        {{- with $pool.capacityType }}
+        - key: karpenter.sh/capacity-type
+          operator: In
+          values: {{ toJson . }}
+        {{- end }}
+        {{- with $pool.arch }}
+        - key: kubernetes.io/arch
+          operator: In
+          values: {{ toJson . }}
+        {{- end }}
+        {{- with $pool.instanceCategory }}
+        - key: eks.amazonaws.com/instance-category
+          operator: In
+          values: {{ toJson . }}
+        {{- end }}
+        {{- with $pool.instanceSizeIn }}
+        - key: eks.amazonaws.com/instance-size
+          operator: In
+          values: {{ toJson . }}
+        {{- end }}
+        {{- with $pool.instanceSizeNotIn }}
+        - key: eks.amazonaws.com/instance-size
+          operator: NotIn
+          values: {{ toJson . }}
+        {{- end }}
+        {{- with $pool.instanceGeneration }}
+        - key: eks.amazonaws.com/instance-generation
+          operator: Gt
+          values: [{{ . | quote }}]
+        {{- end }}
+        {{- if $pool.allZones }}
+        - key: topology.kubernetes.io/zone
+          operator: Exists
+        {{- end }}
+        {{- with $pool.extraRequirements }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+  {{- with $pool.limits }}
+  limits:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  disruption:
+    consolidationPolicy: {{ $pool.consolidationPolicy | default "WhenEmpty" }}
+    consolidateAfter: {{ $pool.consolidateAfter | default "1m" }}
+    {{- with $pool.budgets }}
+    budgets:
+      {{- toYaml . | nindent 6 }}
+    {{- end }}
+{{- end }}

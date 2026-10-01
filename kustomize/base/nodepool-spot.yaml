@@ -1,0 +1,47 @@
+# NodePool Spot base: AMPLIO (weight alto). Los overlays ajustan nombre,
+# consolidationPolicy, budgets, limites y la referencia a la NodeClass.
+apiVersion: karpenter.sh/v1
+kind: NodePool
+metadata:
+  name: base-spot
+  labels:
+    capacity: spot
+spec:
+  weight: 100
+  template:
+    metadata:
+      labels:
+        intent: apps
+    spec:
+      nodeClassRef:
+        group: eks.amazonaws.com
+        kind: NodeClass
+        name: base
+      expireAfter: 336h
+      terminationGracePeriod: 24h
+      requirements:
+        - key: karpenter.sh/capacity-type
+          operator: In
+          values: ["spot"]
+        - key: kubernetes.io/arch
+          operator: In
+          values: ["amd64", "arm64"]
+        - key: eks.amazonaws.com/instance-category
+          operator: In
+          values: ["c", "m", "r", "t"]
+        - key: eks.amazonaws.com/instance-size
+          operator: NotIn
+          values: [nano, micro, small, medium]
+        - key: eks.amazonaws.com/instance-generation
+          operator: Gt
+          values: ["2"]
+        - key: topology.kubernetes.io/zone
+          operator: Exists
+  limits:
+    cpu: "1000"
+    memory: 1000Gi
+  disruption:
+    consolidationPolicy: WhenEmpty
+    consolidateAfter: 1m
+    budgets:
+      - nodes: "10%"

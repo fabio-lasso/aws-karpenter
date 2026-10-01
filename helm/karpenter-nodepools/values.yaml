@@ -1,0 +1,69 @@
+# =============================================================================
+#  values.yaml - valores por defecto del chart karpenter-nodepools
+# =============================================================================
+#  Define una NodeClass compartida y una lista de NodePools. Cada NodePool
+#  puede ser Spot (amplio) u On-Demand (justo), o GPU (dedicado con taint).
+#  Sobrescribe estos valores con un values-<entorno>.yaml.
+# =============================================================================
+
+# Nombre logico del entorno (se usa como prefijo y label)
+environment: preprod
+
+# ---- NodeClass compartida ----
+nodeClass:
+  name: default
+  discoveryTag: "mi-cluster"          # valor del tag karpenter.sh/discovery
+  role: "mi-cluster-eks-node-role"    # rol IAM del nodo
+  ephemeralStorage:
+    size: "40Gi"
+    iops: 3000
+    throughput: 125
+  tags:
+    managed-by: karpenter
+    # cost-center: engineering-nonprod
+
+# ---- Lista de NodePools a crear ----
+# Cada entrada genera un recurso NodePool. Campos:
+#   name, weight, capacityType (lista), arch (lista), instanceCategory (lista),
+#   instanceSizeIn / instanceSizeNotIn, instanceGeneration (Gt), allZones (bool),
+#   taints, limits, consolidationPolicy, consolidateAfter, budgets, extraRequirements, extraLabels
+nodePools:
+  - name: spot
+    weight: 100
+    capacityType: ["spot"]
+    arch: ["amd64", "arm64"]
+    instanceCategory: ["c", "m", "r", "t"]
+    instanceSizeNotIn: ["nano", "micro", "small", "medium"]
+    instanceGeneration: "2"
+    allZones: true
+    expireAfter: "336h"
+    terminationGracePeriod: "24h"
+    limits:
+      cpu: "1000"
+      memory: "1000Gi"
+    consolidationPolicy: WhenEmpty
+    consolidateAfter: "1m"
+    budgets:
+      - nodes: "10%"
+    extraLabels:
+      capacity: spot
+
+  - name: on-demand
+    weight: 10
+    capacityType: ["on-demand"]
+    arch: ["amd64"]
+    instanceCategory: ["c", "m"]
+    instanceSizeIn: ["xlarge", "2xlarge"]
+    instanceGeneration: "2"
+    allZones: false
+    expireAfter: "336h"
+    terminationGracePeriod: "24h"
+    limits:
+      cpu: "500"
+      memory: "500Gi"
+    consolidationPolicy: WhenEmpty
+    consolidateAfter: "1m"
+    budgets:
+      - nodes: "10%"
+    extraLabels:
+      capacity: on-demand

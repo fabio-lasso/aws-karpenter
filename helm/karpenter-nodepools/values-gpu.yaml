@@ -1,0 +1,44 @@
+# Valores GPU: NodePool dedicado con taint nvidia.com/gpu.
+# Puedes instalarlo como release aparte (p. ej. junto a prod).
+environment: prod
+
+nodeClass:
+  name: gpu
+  discoveryTag: "mi-cluster-prod"
+  role: "mi-cluster-eks-node-role"
+  ephemeralStorage:
+    size: "200Gi"               # imagenes CUDA/ML grandes
+    iops: 3000
+    throughput: 125
+  tags:
+    managed-by: karpenter
+    workload-type: gpu
+    cost-center: ml-gpu
+
+nodePools:
+  - name: gpu
+    weight: 50
+    intent: gpu
+    capacityType: ["on-demand"]
+    arch: ["amd64"]
+    instanceCategory: ["g", "p"]
+    instanceGeneration: "3"
+    allZones: false
+    expireAfter: "336h"
+    taints:
+      - key: nvidia.com/gpu
+        effect: NoSchedule
+    extraRequirements:
+      - key: eks.amazonaws.com/instance-gpu-manufacturer
+        operator: In
+        values: ["nvidia"]
+    limits:
+      cpu: "500"
+      memory: "500Gi"
+      nvidia.com/gpu: "8"
+    consolidationPolicy: WhenEmpty
+    consolidateAfter: "5m"
+    budgets:
+      - nodes: "10%"
+    extraLabels:
+      workload-type: gpu
