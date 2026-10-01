@@ -1,4 +1,4 @@
-# InterRapidísimo · Karpenter Workshop
+# Karpenter Workshop · EKS Auto Mode
 
 **Ejecución de cargas de trabajo eficientes en cómputo con Karpenter y Amazon EKS Auto Mode**
 
