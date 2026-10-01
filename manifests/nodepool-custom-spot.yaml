@@ -1,0 +1,54 @@
+# NodePool "custom" inicial: solo Spot, consolidación WhenEmpty.
+# Reemplaza $NODE_IAM_ROLE antes de aplicar, o aplica desde la terminal del
+# workshop donde la variable de entorno ya está exportada.
+apiVersion: karpenter.sh/v1
+kind: NodePool
+metadata:
+  name: custom
+spec:
+  template:
+    metadata:
+      labels:
+        intent: apps
+    spec:
+      nodeClassRef:
+        group: eks.amazonaws.com
+        kind: NodeClass
+        name: custom
+      expireAfter: 336h
+      terminationGracePeriod: 24h
+      requirements:
+        - key: karpenter.sh/capacity-type
+          operator: In
+          values: ["spot"]
+        - key: eks.amazonaws.com/instance-size
+          operator: NotIn
+          values: [nano, micro, small, medium, large]
+        - key: eks.amazonaws.com/instance-generation
+          operator: Gt
+          values: ["2"]
+  limits:
+    cpu: 1000
+    memory: 1000Gi
+  disruption:
+    consolidationPolicy: WhenEmpty
+    consolidateAfter: 30s
+    budgets:
+      - nodes: 10%
+---
+apiVersion: eks.amazonaws.com/v1
+kind: NodeClass
+metadata:
+  name: custom
+spec:
+  subnetSelectorTerms:
+    - tags:
+        karpenter.sh/discovery: "karpenter-workshop"
+  securityGroupSelectorTerms:
+    - tags:
+        karpenter.sh/discovery: "karpenter-workshop"
+  role: "$NODE_IAM_ROLE"
+  tags:
+    Name: karpenter.sh/nodepool/custom
+    NodeType: "karpenter-workshop"
+    IntentLabel: "apps"

@@ -1,0 +1,60 @@
+# =============================================================================
+#  EJEMPLO DE WORKLOAD - como consumir los NodePools
+# =============================================================================
+#  Puntos clave:
+#   - NO fija karpenter.sh/capacity-type -> deja que el "weight" decida:
+#     Spot (weight 100) primero, On-Demand (weight 10) como fallback.
+#   - requests = limits en memoria (buena practica con consolidacion).
+#   - topologySpreadConstraints para repartir entre AZ (resiliencia).
+#   - PodDisruptionBudget para proteger la disponibilidad durante disrupciones.
+# =============================================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ejemplo-app
+  labels:
+    app: ejemplo-app
+spec:
+  replicas: 6
+  selector:
+    matchLabels:
+      app: ejemplo-app
+  template:
+    metadata:
+      labels:
+        app: ejemplo-app
+    spec:
+      nodeSelector:
+        intent: apps
+        environment: prod          # cambia a "preprod" segun el entorno
+      # terminationGracePeriodSeconds razonable para manejar SIGTERM en Spot
+      terminationGracePeriodSeconds: 60
+      containers:
+        - name: ejemplo-app
+          image: public.ecr.aws/nginx/nginx:latest
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "512Mi"
+            limits:
+              # memoria: limit = request (evita OOM al consolidar)
+              memory: "512Mi"
+          ports:
+            - containerPort: 80
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app: ejemplo-app
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: ejemplo-app-pdb
+spec:
+  minAvailable: 50%
+  selector:
+    matchLabels:
+      app: ejemplo-app
