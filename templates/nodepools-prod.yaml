@@ -1,0 +1,143 @@
+# =============================================================================
+#  PLANTILLA KARPENTER - PRODUCCION
+# =============================================================================
+#  Estrategia:
+#    - Spot AMPLIO   (weight 100): se intenta primero. Maxima diversidad de
+#                                  instancias (clave para resiliencia Spot).
+#    - On-Demand JUSTO (weight 10): fallback cuando no hay capacidad Spot.
+#                                   Seleccion acotada y predecible.
+#    - consolidationPolicy: WhenEmptyOrUnderutilized -> optimiza costo activamente
+#                                   consolidando nodos subutilizados.
+#    - Disruption budgets mas estrictos + ventanas de mantenimiento para
+#                                   proteger el trafico productivo.
+#
+#  Reemplaza las variables antes de aplicar (o exportalas en tu shell):
+#    $NODE_IAM_ROLE   -> rol IAM del nodo
+#    $DISCOVERY_TAG   -> valor del tag karpenter.sh/discovery (p. ej. nombre del cluster)
+#
+#  RECOMENDACION PRODUCCION: define requests = limits para recursos distintos de
+#  CPU (ver README). La consolidacion empaqueta pods considerando solo requests.
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# NodePool Spot - AMPLIO - se intenta primero (weight alto)
+# -----------------------------------------------------------------------------
+apiVersion: karpenter.sh/v1
+kind: NodePool
+metadata:
+  name: prod-spot
+  labels:
+    environment: prod
+    capacity: spot
+spec:
+  weight: 100
+  template:
+    metadata:
+      labels:
+        intent: apps
+        environment: prod
+    spec:
+      nodeClassRef:
+        group: eks.amazonaws.com
+        kind: NodeClass
+        name: prod
+      expireAfter: 336h            # 14 dias
+      terminationGracePeriod: 24h
+      requirements:
+        # --- Capacidad: SOLO Spot ---
+        - key: karpenter.sh/capacity-type
+          operator: In
+          values: ["spot"]
+        # --- AMPLIO: multiples arquitecturas (incluye Graviton) ---
+        - key: kubernetes.io/arch
+          operator: In
+          values: ["amd64", "arm64"]
+        # --- AMPLIO: muchas familias para maximizar los pools de capacidad ---
+        - key: eks.amazonaws.com/instance-category
+          operator: In
+          values: ["c", "m", "r", "t"]
+        # --- AMPLIO: amplio rango de tamanos (NO restringir en exceso Spot) ---
+        - key: eks.amazonaws.com/instance-size
+          operator: NotIn
+          values: [nano, micro, small, medium]
+        # --- Generaciones modernas ---
+        - key: eks.amazonaws.com/instance-generation
+          operator: Gt
+          values: ["2"]
+        # --- Diversidad de AZ (todas las disponibles) ---
+        - key: topology.kubernetes.io/zone
+          operator: Exists
+  limits:
+    cpu: "2000"
+    memory: 2000Gi
+  disruption:
+    consolidationPolicy: WhenEmptyOrUnderutilized   # optimiza costo en prod
+    consolidateAfter: 2m                            # amortigua reacciones bruscas
+    budgets:
+      # Regla general: como maximo 10% de nodos interrumpidos a la vez
+      - nodes: "10%"
+      # Mas estricto para Underutilized: de 1 en 1 (reemplazos controlados)
+      - nodes: "1"
+        reasons: ["Underutilized"]
+      # Ventana de bloqueo total en horario pico (no interrumpir)
+      # Ajusta zona horaria/cron a tu operacion. Ejemplo: L-V 08:00-20:00.
+      - nodes: "0"
+        schedule: "0 8 * * mon-fri"
+        duration: 12h
+---
+# -----------------------------------------------------------------------------
+# NodePool On-Demand - JUSTO - fallback (weight bajo)
+# -----------------------------------------------------------------------------
+apiVersion: karpenter.sh/v1
+kind: NodePool
+metadata:
+  name: prod-on-demand
+  labels:
+    environment: prod
+    capacity: on-demand
+spec:
+  weight: 10
+  template:
+    metadata:
+      labels:
+        intent: apps
+        environment: prod
+    spec:
+      nodeClassRef:
+        group: eks.amazonaws.com
+        kind: NodeClass
+        name: prod
+      expireAfter: 336h
+      terminationGracePeriod: 24h
+      requirements:
+        # --- Capacidad: SOLO On-Demand ---
+        - key: karpenter.sh/capacity-type
+          operator: In
+          values: ["on-demand"]
+        # --- JUSTO: una sola arquitectura, predecible y facil de dimensionar ---
+        - key: kubernetes.io/arch
+          operator: In
+          values: ["amd64"]
+        # --- JUSTO: familias acotadas de proposito general / computo ---
+        - key: eks.amazonaws.com/instance-category
+          operator: In
+          values: ["c", "m"]
+        # --- JUSTO: tamanos acotados para costo predecible ---
+        - key: eks.amazonaws.com/instance-size
+          operator: In
+          values: [xlarge, 2xlarge, 4xlarge]
+        - key: eks.amazonaws.com/instance-generation
+          operator: Gt
+          values: ["2"]
+        - key: topology.kubernetes.io/zone
+          operator: Exists
+  limits:
+    cpu: "1000"
+    memory: 1000Gi
+  disruption:
+    consolidationPolicy: WhenEmptyOrUnderutilized
+    consolidateAfter: 2m
+    budgets:
+      - nodes: "10%"
+      - nodes: "1"
+        reasons: ["Underutilized"]

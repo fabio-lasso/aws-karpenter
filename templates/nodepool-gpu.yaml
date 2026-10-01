@@ -1,0 +1,120 @@
+# =============================================================================
+#  PLANTILLA KARPENTER - NODEPOOL GPU (dedicado)
+# =============================================================================
+#  Estrategia:
+#    - NodePool dedicado con TAINT (nvidia.com/gpu) para aislar nodos GPU caros.
+#    - Solo cargas que piden nvidia.com/gpu y toleran el taint aterrizan aqui.
+#    - On-Demand por defecto (GPU suele ser stateful / de larga duracion).
+#    - Consolidacion conservadora (WhenEmpty) y limite de GPUs.
+#
+#  Reemplaza las variables antes de aplicar:
+#    $NODE_IAM_ROLE   -> rol IAM del nodo
+#    $DISCOVERY_TAG   -> valor del tag karpenter.sh/discovery (p. ej. nombre del cluster)
+# =============================================================================
+
+apiVersion: karpenter.sh/v1
+kind: NodePool
+metadata:
+  name: gpu
+  labels:
+    workload-type: gpu
+spec:
+  weight: 50
+  template:
+    metadata:
+      labels:
+        intent: gpu
+    spec:
+      nodeClassRef:
+        group: eks.amazonaws.com
+        kind: NodeClass
+        name: gpu
+      expireAfter: 336h
+      terminationGracePeriod: 24h
+      # TAINT: solo pods que lo toleren podran usar estos nodos
+      taints:
+        - key: nvidia.com/gpu
+          effect: NoSchedule
+      requirements:
+        - key: karpenter.sh/capacity-type
+          operator: In
+          values: ["on-demand"]              # GPU: On-Demand (o reserved) por estabilidad
+        - key: kubernetes.io/arch
+          operator: In
+          values: ["amd64"]
+        - key: eks.amazonaws.com/instance-category
+          operator: In
+          values: ["g", "p"]                 # familias con GPU
+        - key: eks.amazonaws.com/instance-gpu-manufacturer
+          operator: In
+          values: ["nvidia"]
+        - key: eks.amazonaws.com/instance-generation
+          operator: Gt
+          values: ["3"]
+  limits:
+    cpu: "500"
+    memory: 500Gi
+    nvidia.com/gpu: "8"                       # tope de GPUs aprovisionables
+  disruption:
+    consolidationPolicy: WhenEmpty            # conservador: GPU suele ser stateful
+    consolidateAfter: 5m
+    budgets:
+      - nodes: "10%"
+---
+apiVersion: eks.amazonaws.com/v1
+kind: NodeClass
+metadata:
+  name: gpu
+spec:
+  subnetSelectorTerms:
+    - tags:
+        karpenter.sh/discovery: "$DISCOVERY_TAG"
+  securityGroupSelectorTerms:
+    - tags:
+        karpenter.sh/discovery: "$DISCOVERY_TAG"
+  role: "$NODE_IAM_ROLE"
+  ephemeralStorage:
+    size: "200Gi"                             # imagenes CUDA/ML suelen ser grandes
+    iops: 3000
+    throughput: 125
+  tags:
+    Name: karpenter.sh/nodeclass/gpu
+    workload-type: gpu
+    managed-by: karpenter
+    cost-center: ml-gpu
+---
+# -----------------------------------------------------------------------------
+# Workload de ejemplo que consume el NodePool GPU
+# -----------------------------------------------------------------------------
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gpu-ejemplo
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: gpu-ejemplo
+  template:
+    metadata:
+      labels:
+        app: gpu-ejemplo
+    spec:
+      nodeSelector:
+        intent: gpu
+      tolerations:
+        - key: nvidia.com/gpu
+          operator: Exists
+          effect: NoSchedule                  # tolera el taint del NodePool GPU
+      containers:
+        - name: cuda-app
+          # Reemplaza por tu imagen con soporte CUDA / arm64 segun corresponda
+          image: public.ecr.aws/eks-distro/kubernetes/pause:3.7
+          resources:
+            requests:
+              cpu: "2"
+              memory: "8Gi"
+              nvidia.com/gpu: "1"
+            limits:
+              memory: "8Gi"
+              nvidia.com/gpu: "1"             # GPU: recurso entero, request = limit

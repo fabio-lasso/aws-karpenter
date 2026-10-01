@@ -1,0 +1,126 @@
+# =============================================================================
+#  PLANTILLA KARPENTER - ENTORNOS PREVIOS (dev / staging / qa)
+# =============================================================================
+#  Estrategia:
+#    - Spot AMPLIO   (weight 100): se intenta primero. Maxima diversidad de
+#                                  instancias para reducir interrupciones.
+#    - On-Demand JUSTO (weight 10): fallback cuando no hay capacidad Spot.
+#                                   Seleccion acotada y predecible.
+#    - consolidationPolicy: WhenEmpty  -> conservador. Solo elimina nodos
+#                                         VACIOS. Menos disrupcion durante
+#                                         pruebas y desarrollo.
+#
+#  Reemplaza las variables antes de aplicar (o exportalas en tu shell):
+#    $NODE_IAM_ROLE   -> rol IAM del nodo
+#    $DISCOVERY_TAG   -> valor del tag karpenter.sh/discovery (p. ej. nombre del cluster)
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# NodePool Spot - AMPLIO - se intenta primero (weight alto)
+# -----------------------------------------------------------------------------
+apiVersion: karpenter.sh/v1
+kind: NodePool
+metadata:
+  name: preprod-spot
+  labels:
+    environment: preprod
+    capacity: spot
+spec:
+  weight: 100
+  template:
+    metadata:
+      labels:
+        intent: apps
+        environment: preprod
+    spec:
+      nodeClassRef:
+        group: eks.amazonaws.com
+        kind: NodeClass
+        name: preprod
+      expireAfter: 168h            # 7 dias: refresco de nodos en entornos previos
+      terminationGracePeriod: 24h
+      requirements:
+        # --- Capacidad: SOLO Spot ---
+        - key: karpenter.sh/capacity-type
+          operator: In
+          values: ["spot"]
+        # --- AMPLIO: multiples arquitecturas (incluye Graviton) ---
+        - key: kubernetes.io/arch
+          operator: In
+          values: ["amd64", "arm64"]
+        # --- AMPLIO: familias de proposito general y de computo ---
+        - key: eks.amazonaws.com/instance-category
+          operator: In
+          values: ["c", "m", "r", "t"]
+        # --- AMPLIO: amplio rango de tamanos (evita solo los mas pequenos) ---
+        - key: eks.amazonaws.com/instance-size
+          operator: NotIn
+          values: [nano, micro, small, medium]
+        # --- Generaciones modernas ---
+        - key: eks.amazonaws.com/instance-generation
+          operator: Gt
+          values: ["2"]
+        # --- Diversidad de AZ (todas las disponibles) ---
+        - key: topology.kubernetes.io/zone
+          operator: Exists
+  limits:
+    cpu: "500"
+    memory: 500Gi
+  disruption:
+    consolidationPolicy: WhenEmpty      # conservador en entornos previos
+    consolidateAfter: 1m
+    budgets:
+      - nodes: "30%"                    # mas permisivo: no hay trafico productivo
+---
+# -----------------------------------------------------------------------------
+# NodePool On-Demand - JUSTO - fallback (weight bajo)
+# -----------------------------------------------------------------------------
+apiVersion: karpenter.sh/v1
+kind: NodePool
+metadata:
+  name: preprod-on-demand
+  labels:
+    environment: preprod
+    capacity: on-demand
+spec:
+  weight: 10
+  template:
+    metadata:
+      labels:
+        intent: apps
+        environment: preprod
+    spec:
+      nodeClassRef:
+        group: eks.amazonaws.com
+        kind: NodeClass
+        name: preprod
+      expireAfter: 168h
+      terminationGracePeriod: 24h
+      requirements:
+        # --- Capacidad: SOLO On-Demand ---
+        - key: karpenter.sh/capacity-type
+          operator: In
+          values: ["on-demand"]
+        # --- JUSTO: una sola arquitectura, predecible ---
+        - key: kubernetes.io/arch
+          operator: In
+          values: ["amd64"]
+        # --- JUSTO: familias acotadas de proposito general ---
+        - key: eks.amazonaws.com/instance-category
+          operator: In
+          values: ["c", "m"]
+        # --- JUSTO: tamanos acotados ---
+        - key: eks.amazonaws.com/instance-size
+          operator: In
+          values: [xlarge, 2xlarge]
+        - key: eks.amazonaws.com/instance-generation
+          operator: Gt
+          values: ["2"]
+  limits:
+    cpu: "200"
+    memory: 200Gi
+  disruption:
+    consolidationPolicy: WhenEmpty
+    consolidateAfter: 1m
+    budgets:
+      - nodes: "30%"

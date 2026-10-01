@@ -1,0 +1,64 @@
+# =============================================================================
+#  NODECLASSES - infraestructura por entorno
+# =============================================================================
+#  Una NodeClass define ajustes a nivel de infraestructura (subnets, security
+#  groups, rol IAM, tags, almacenamiento). Varios NodePools pueden referenciar
+#  la misma NodeClass. Aqui separamos por entorno para aislar descubrimiento
+#  de red y etiquetado de costos.
+#
+#  Reemplaza las variables antes de aplicar (o exportalas en tu shell):
+#    $NODE_IAM_ROLE   -> rol IAM del nodo (p. ej. el creado por EKS Auto Mode)
+#    $DISCOVERY_TAG   -> valor del tag karpenter.sh/discovery (p. ej. nombre del cluster)
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# NodeClass para entornos previos (dev / staging / qa)
+# -----------------------------------------------------------------------------
+apiVersion: eks.amazonaws.com/v1
+kind: NodeClass
+metadata:
+  name: preprod
+spec:
+  subnetSelectorTerms:
+    - tags:
+        karpenter.sh/discovery: "$DISCOVERY_TAG"
+  securityGroupSelectorTerms:
+    - tags:
+        karpenter.sh/discovery: "$DISCOVERY_TAG"
+  role: "$NODE_IAM_ROLE"
+  # Almacenamiento efimero ajustado para entornos previos
+  ephemeralStorage:
+    size: "40Gi"
+    iops: 3000
+    throughput: 125
+  tags:
+    Name: karpenter.sh/nodeclass/preprod
+    environment: preprod
+    managed-by: karpenter
+    cost-center: engineering-nonprod
+---
+# -----------------------------------------------------------------------------
+# NodeClass para produccion
+# -----------------------------------------------------------------------------
+apiVersion: eks.amazonaws.com/v1
+kind: NodeClass
+metadata:
+  name: prod
+spec:
+  subnetSelectorTerms:
+    - tags:
+        karpenter.sh/discovery: "$DISCOVERY_TAG"
+  securityGroupSelectorTerms:
+    - tags:
+        karpenter.sh/discovery: "$DISCOVERY_TAG"
+  role: "$NODE_IAM_ROLE"
+  # Almacenamiento efimero con mas margen para cargas productivas
+  ephemeralStorage:
+    size: "80Gi"
+    iops: 3000
+    throughput: 125
+  tags:
+    Name: karpenter.sh/nodeclass/prod
+    environment: prod
+    managed-by: karpenter
+    cost-center: engineering-prod

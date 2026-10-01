@@ -1,0 +1,41 @@
+# NodePool "custom" restringido: solo Spot, categoria "c", tamano 4xlarge.
+# Util para demostrar que la consolidacion Spot-a-Spot NO ocurre cuando hay
+# menos de 15 tipos de instancia seleccionables.
+apiVersion: karpenter.sh/v1
+kind: NodePool
+metadata:
+  name: custom
+spec:
+  template:
+    metadata:
+      labels:
+        intent: apps
+    spec:
+      expireAfter: 336h
+      terminationGracePeriod: 24h
+      nodeClassRef:
+        group: eks.amazonaws.com
+        kind: NodeClass
+        name: custom
+      requirements:
+        - key: karpenter.sh/capacity-type
+          operator: In
+          values: ["spot"]
+        - key: "kubernetes.io/arch"
+          operator: In
+          values: ["amd64"]
+        - key: eks.amazonaws.com/instance-category
+          operator: In
+          values: ["c"]
+        - key: eks.amazonaws.com/instance-size
+          operator: In
+          values: [4xlarge]
+        - key: eks.amazonaws.com/instance-generation
+          operator: Gt
+          values: ["2"]
+  limits:
+    cpu: 1000
+    memory: 1000Gi
+  disruption:
+    consolidationPolicy: WhenEmptyOrUnderutilized
+    consolidateAfter: 0s

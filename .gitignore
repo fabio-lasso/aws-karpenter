@@ -1,0 +1,15 @@
+# Archivos del sistema
+.DS_Store
+Thumbs.db
+
+# Editores / IDE
+.vscode/
+.idea/
+*.swp
+
+# Artefactos temporales generados en el workshop
+*.tmp
+inflate*.yaml.bak
+prometheus-values.yaml
+grafana-values.yaml
+karpenter-impact.json
